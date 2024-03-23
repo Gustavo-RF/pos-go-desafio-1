@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -58,40 +60,59 @@ func main() {
 }
 
 func HandleFetchUsdValue(res http.ResponseWriter, req *http.Request, db *gorm.DB) {
-
 	if req.URL.Path != "/" {
 		res.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	usdValue, err := FetchUsdValue()
+	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+	defer cancel()
+	usdValue, err := FetchUsdValue(ctx)
+
+	if ctx.Err() != nil {
+		fmt.Printf("Error while request: %v", ctx.Err())
+		res.WriteHeader(http.StatusBadRequest)
+		return
+	}
 
 	if err != nil {
-		fmt.Println(err)
+		fmt.Printf("Error while request: %v", err)
 		res.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	CreateCurrencyDb(*usdValue, *db)
+	ctx, cancel = context.WithTimeout(ctx, 10*time.Millisecond)
+	defer cancel()
+	CreateCurrencyDb(*usdValue, *db, ctx)
 
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	res.WriteHeader(http.StatusInternalServerError)
-	// 	return
-	// }
+	if ctx.Err() != nil {
+		fmt.Printf("Error while save: %v", ctx.Err())
+		res.WriteHeader(http.StatusBadRequest)
+		return
+	}
 
 	res.Header().Set("Content-type", "application/json")
 	json.NewEncoder(res).Encode(usdValue)
 }
 
-func FetchUsdValue() (*UsdValueDto, error) {
-	req, err := http.Get("https://economia.awesomeapi.com.br/json/last/USD-BRL")
+func FetchUsdValue(ctx context.Context) (*UsdValueDto, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://economia.awesomeapi.com.br/json/last/USD-BRL", nil)
+
 	if err != nil {
 		return nil, err
 	}
-	defer req.Body.Close()
 
-	res, err := io.ReadAll(req.Body)
+	req.Header.Set("Accepts", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	res, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -105,8 +126,8 @@ func FetchUsdValue() (*UsdValueDto, error) {
 	return &data, nil
 }
 
-func CreateCurrencyDb(UsdValueDto UsdValueDto, db gorm.DB) {
-	db.Create(&Currency{
+func CreateCurrencyDb(UsdValueDto UsdValueDto, db gorm.DB, ctx context.Context) {
+	db.WithContext(ctx).Create(&Currency{
 		CurrencyCompare: UsdValueDto.Usdbrl.Code,
 		CurrencyUser:    UsdValueDto.Usdbrl.Codein,
 		HighValue:       UsdValueDto.Usdbrl.High,
