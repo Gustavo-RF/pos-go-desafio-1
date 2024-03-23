@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
-type Usdbrl struct {
+type UsdbrlDto struct {
 	Code       string `json:"code"`
 	Codein     string `json:"codein"`
 	Name       string `json:"name"`
@@ -21,16 +24,40 @@ type Usdbrl struct {
 	CreateDate string `json:"create_date"`
 }
 
-type UsdValue struct {
-	Usdbrl Usdbrl `json:"USDBRL"`
+type Currency struct {
+	CurrencyCompare string `json:"currency_compare"`
+	CurrencyUser    string `json:"currency_user"`
+	HighValue       string `json:"high_value"`
+	LowValue        string `json:"low_value"`
+	Variation       string `json:"variation"`
+	Percentage      string `json:"percentage"`
+	BuyValue        string `json:"buy_value"`
+	SellValue       string `json:"sell_value"`
+	CreateDate      string `json:"create_date"`
+	gorm.Model
+}
+
+type UsdValueDto struct {
+	Usdbrl UsdbrlDto `json:"USDBRL"`
 }
 
 func main() {
-	http.HandleFunc("/", HandleFetchUsdValue)
+
+	db, err := gorm.Open(sqlite.Open("currency.db"), &gorm.Config{})
+	if err != nil {
+		panic("failed to connect database")
+	}
+
+	// Migrate the schema
+	db.AutoMigrate(&Currency{})
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		HandleFetchUsdValue(w, r, db)
+	})
 	http.ListenAndServe(":8080", nil)
 }
 
-func HandleFetchUsdValue(res http.ResponseWriter, req *http.Request) {
+func HandleFetchUsdValue(res http.ResponseWriter, req *http.Request, db *gorm.DB) {
 
 	if req.URL.Path != "/" {
 		res.WriteHeader(http.StatusNotFound)
@@ -45,11 +72,19 @@ func HandleFetchUsdValue(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	CreateCurrencyDb(*usdValue, *db)
+
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	res.WriteHeader(http.StatusInternalServerError)
+	// 	return
+	// }
+
 	res.Header().Set("Content-type", "application/json")
 	json.NewEncoder(res).Encode(usdValue)
 }
 
-func FetchUsdValue() (*UsdValue, error) {
+func FetchUsdValue() (*UsdValueDto, error) {
 	req, err := http.Get("https://economia.awesomeapi.com.br/json/last/USD-BRL")
 	if err != nil {
 		return nil, err
@@ -60,7 +95,7 @@ func FetchUsdValue() (*UsdValue, error) {
 	if err != nil {
 		return nil, err
 	}
-	var data UsdValue
+	var data UsdValueDto
 	err = json.Unmarshal(res, &data)
 
 	if err != nil {
@@ -68,4 +103,18 @@ func FetchUsdValue() (*UsdValue, error) {
 	}
 
 	return &data, nil
+}
+
+func CreateCurrencyDb(UsdValueDto UsdValueDto, db gorm.DB) {
+	db.Create(&Currency{
+		CurrencyCompare: UsdValueDto.Usdbrl.Code,
+		CurrencyUser:    UsdValueDto.Usdbrl.Codein,
+		HighValue:       UsdValueDto.Usdbrl.High,
+		LowValue:        UsdValueDto.Usdbrl.Low,
+		Variation:       UsdValueDto.Usdbrl.VarBid,
+		Percentage:      UsdValueDto.Usdbrl.PctChange,
+		BuyValue:        UsdValueDto.Usdbrl.Bid,
+		SellValue:       UsdValueDto.Usdbrl.Ask,
+		CreateDate:      UsdValueDto.Usdbrl.CreateDate,
+	})
 }
