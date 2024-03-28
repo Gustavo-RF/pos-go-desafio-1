@@ -43,6 +43,10 @@ type UsdValueDto struct {
 	Usdbrl UsdbrlDto `json:"USDBRL"`
 }
 
+type UsdValueResponseDto struct {
+	Bid string `json:"bid"`
+}
+
 func main() {
 
 	db, err := gorm.Open(sqlite.Open("currency.db"), &gorm.Config{})
@@ -53,14 +57,14 @@ func main() {
 	// Migrate the schema
 	db.AutoMigrate(&Currency{})
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/cotacao", func(w http.ResponseWriter, r *http.Request) {
 		HandleFetchUsdValue(w, r, db)
 	})
 	http.ListenAndServe(":8080", nil)
 }
 
 func HandleFetchUsdValue(res http.ResponseWriter, req *http.Request, db *gorm.DB) {
-	if req.URL.Path != "/" {
+	if req.URL.Path != "/cotacao" {
 		res.WriteHeader(http.StatusNotFound)
 		return
 	}
@@ -92,8 +96,11 @@ func HandleFetchUsdValue(res http.ResponseWriter, req *http.Request, db *gorm.DB
 		return
 	}
 
+	var usdValueResponse UsdValueResponseDto
+	usdValueResponse.Bid = usdValue.Usdbrl.Bid
+
 	res.Header().Set("Content-type", "application/json")
-	json.NewEncoder(res).Encode(usdValue)
+	json.NewEncoder(res).Encode(usdValueResponse)
 }
 
 func FetchUsdValue(ctx context.Context) (*UsdValueDto, error) {
