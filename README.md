@@ -8,9 +8,13 @@ O servidor é responsável por buscar as informações de cotação do dólar em
 O cliente é responsável por fazer a chamada ao server, mostrar no writer padrão o resultado e salvar em um arquivo txt
 
 ## Rodando o projeto
-  go run server/server.go
+
+  > go mod tidy 
+  
+  > go run server/server.go
 
 ## Fazendo a chamada pelo client
-  go run client/client.go
+
+  > go run client/client.go
 
 Ao rodar o client, os resultados serão salvos em banco, arquivo e mostrado na tela para o usuário.
